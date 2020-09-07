@@ -132,7 +132,7 @@ async function createDP() {
     createState(PRE_DP, '', { name: 'Wetterstatistik' });
     createState(PRE_DP+'.aktueller_Monat',            '', { name: 'Statistik für den aktuellen Monat' });
     createState(PRE_DP+'.Vorjahres_Monat',            '', { name: 'Statistik für den Monat des Vorjahres' });
-    createState(PRE_DP+'.aktueller_Monat.Tiefstwert',  0, { name: "Tiefstwert", type: "number", role: "state", unit: "°C" });
+    createState(PRE_DP+'.aktueller_Monat.Tiefstwert', '', { name: "Tiefstwert", type: "number", role: "state", unit: "°C" });
  
     await Sleep(5000);
 }
