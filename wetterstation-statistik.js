@@ -1,6 +1,6 @@
 /* Wetterstation-Statistiken 
    (c)2020 by SBorg 
-   V0.0.1 - 07.09.2020   erste Alpha + Min/Max/Durchschnitt/Temp über 20/25°?/Windböe/Regen
+   V0.0.1 - 08.09.2020   erste Alpha + Min/Max/Durchschnitt/Temp über 20/25°?/Windböe/Regen
 
    holt die Messdaten aus einer InfluxDB und erstellt eine Statistik
 
@@ -8,7 +8,7 @@
             "Heiße Tage > 30°C" ; "Sommertage > 25°C" ; "Warme Tage > 20°C"
             "Kalte Tage (Max. unter 10°C)" ; "Frosttage (Min. unter 10°C)" ; "Eistage (Max. unter 0°C)" ; " Sehr kalte Tage (Min. unter -10°C)"
             "Maximum Windböe" ; "Regensumme Monat" ; " Maximum Regen/Tag"
-   
+            Monatswerte resetten
    known issues: keine
 
 */
@@ -28,25 +28,23 @@
 
 //ab hier gibt es nix mehr zu ändern :)
 //firstStart?
-if (!isState(PRE_DP+'.aktueller_Monat.Tiefstwert', false)) { createDP(); }
+if (!isState(PRE_DP+'.aktueller_Monat.Temperatur_Durchschnitt', false)) { createDP(); }
 
 
 //Start des Scripts
 main(); // XXX - nur für Debug; später löschen
-   console.log('Wetterstation-Statistiken gestartet...');
+    let Tiefstwert, Hoechstwert, Temp_Durchschnitt;
+    console.log('Wetterstation-Statistiken gestartet...');
 //scheduler
-   schedule(ZEITPLAN, main);
+    schedule(ZEITPLAN, main);
 
 
 
 // ### Funktionen ###############################################################################################
-function main(){
+function main() {
 
 // Systemeinstellungen
-    let temps = [];
-    let wind = [];
-    let regen = [];
-    let Tiefstwert, Hoechstwert, Temp_Durchschnitt;
+    let temps = [], wind = [], regen = [];
     let zeitstempel = new Date();
     let start = new Date(zeitstempel.getFullYear(),zeitstempel.getMonth(),zeitstempel.getDate()-1,0,0,0);
     start = start.getTime();
@@ -76,7 +74,7 @@ sendTo('influxdb.'+INFLUXDB_INSTANZ, 'query',
     Tiefstwert = Math.min(...temps);
     Hoechstwert = Math.max(...temps);
     Math.sum = (...temps) => Array.prototype.reduce.call(temps,(a,b) => a+b);
-    Temp_Durchschnitt = (Math.sum(...temps)/temps.length).toFixed(2);
+    Temp_Durchschnitt = Number((Math.sum(...temps)/temps.length).toFixed(2));
 
     
 //Debug-Consolenausgaben
@@ -84,25 +82,43 @@ sendTo('influxdb.'+INFLUXDB_INSTANZ, 'query',
     console.log('Daten bis ' + timeConverter(end)); 
 
 
-    //Math.sum = (...regen) => Array.prototype.reduce.call(regen,(a,b) => a+b);
     if (Math.max(...temps) > 20) {console.log('Temperatur lag heute über 20 °C');}
     if (Math.max(...temps) > 25) {console.log('Temperatur lag heute über 25 °C');}
-    console.log('Tiefstwert: ' + Tiefstwert + ' °C');
-    console.log('Höchstwert: ' + Hoechstwert + ' °C');
-    console.log('Durchschnitt: ' + Temp_Durchschnitt + ' °C');
     console.log('Maximum Windböe: ' + Math.max(...wind) + ' km/h');
-    //console.log('Regenmenge: ' + Math.sum(...regen).toFixed(2) + ' l/m²');
     console.log('Regenmenge/Tag: ' + Math.max(...regen) + ' l/m²');
     console.log('Erster Messwert: ' + new Date(result.result[0][0].ts).toISOString() + ' ***' + result.result[0][0].value);
     console.log('Letzter Messwert: ' + new Date(result.result[0][temps.length-1].ts).toISOString() + ' ***' + result.result[0][temps.length-1].value);
     console.log('Anzahl Datensätze: T_' + temps.length + '|W_' + wind.length + '|R_' + regen.length);
 
 //Datenpunkte schreiben
-    // XXX - später mittels Array + forEach realisieren
-    if (getState(PRE_DP+'.aktueller_Monat.Tiefstwert').val > Tiefstwert) {setState(PRE_DP+'.aktueller_Monat.Tiefstwert', Tiefstwert, true);}    
-});
+ if (zeitstempel.getDate() == 8) { // Jobs Monatserster (tatsächlich erst am 2. da wir immer mit einem Tag Verzögerung arbeiten)
+   //DPs unabhängig ihres Wertes initial schreiben
+   setState(PRE_DP+'.aktueller_Monat.Tiefstwert', Tiefstwert, true);
+   setState(PRE_DP+'.aktueller_Monat.Hoechstwert', Hoechstwert, true);
+   setState(PRE_DP+'.aktueller_Monat.Temperatur_Durchschnitt', Temp_Durchschnitt, true);
+   speichern_Monat();  //aktuelle Monatsstatistik speichern
+   VorJahr();          //Vorjahresmonatsstatistik ausführen
+  } else {
+   if (getState(PRE_DP+'.aktueller_Monat.Tiefstwert').val > Tiefstwert) {setState(PRE_DP+'.aktueller_Monat.Tiefstwert', Tiefstwert, true);}    
+   if (getState(PRE_DP+'.aktueller_Monat.Hoechstwert').val < Hoechstwert) {setState(PRE_DP+'.aktueller_Monat.Hoechstwert', Hoechstwert, true);}    
+   if (getState(PRE_DP+'.aktueller_Monat.Temperatur_Durchschnitt').val != Temp_Durchschnitt) {setState(PRE_DP+'.aktueller_Monat.Temperatur_Durchschnitt', Temp_Durchschnitt, true);}
+  }
 
+ });
 } //end function
+
+function speichern_Monat() {
+    let monat = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+    let zeitstempel = new Date();
+    let datum = new Date(zeitstempel.getFullYear(),zeitstempel.getMonth(),zeitstempel.getDate()-2);
+    let monatsdatenpunkt = '.Data.'+datum.getFullYear()+'.'+pad(datum.getMonth()); 
+    let json = JSON.stringify({Tiefstwert: Tiefstwert, Hoechstwert: Hoechstwert, Temp_Durchschnitt: new Number(Temp_Durchschnitt)});
+    createState(PRE_DP+monatsdatenpunkt,'',  { name: "Monatsstatistik für "+monat[datum.getMonth()-1]+' '+datum.getFullYear(), type: "string", role: "json" }, () => { setState(PRE_DP+monatsdatenpunkt, json, true); });
+    
+} //end function
+
+
+function VorJahr() {}
 
 function timeConverter(UNIX_timestamp){
   let a = new Date(UNIX_timestamp);
@@ -130,11 +146,13 @@ function Sleep(milliseconds) {
 async function createDP() {
     console.log(PRE_DP + ' existiert nicht... Lege Datenstruktur an...');
     createState(PRE_DP, '', { name: 'Wetterstatistik' });
-    createState(PRE_DP+'.aktueller_Monat',            '', { name: 'Statistik für den aktuellen Monat' });
-    createState(PRE_DP+'.Vorjahres_Monat',            '', { name: 'Statistik für den Monat des Vorjahres' });
-    createState(PRE_DP+'.aktueller_Monat.Tiefstwert', '', { name: "Tiefstwert", type: "number", role: "state", unit: "°C" });
- 
-    await Sleep(5000);
+    createState(PRE_DP+'.aktueller_Monat',                        '',   { name: 'Statistik für den aktuellen Monat' });
+    createState(PRE_DP+'.Vorjahres_Monat',                        '',   { name: 'Statistik für den Monat des Vorjahres' });
+    createState(PRE_DP+'.Data',                                   '',   { name: 'bisherige Statistiken' });
+    createState(PRE_DP+'.aktueller_Monat.Tiefstwert',             100,  { name: "Tiefstwert",              type: "number", role: "state", unit: "°C" });
+    createState(PRE_DP+'.aktueller_Monat.Hoechstwert',            -100, { name: "Höchstwert",              type: "number", role: "state", unit: "°C" });
+    createState(PRE_DP+'.aktueller_Monat.Temperatur_Durchschnitt',0,    { name: "Durchschnittstemperatur", type: "number", role: "state", unit: "°C" });
+    await Sleep(200);
 }
 
 
@@ -147,19 +165,9 @@ async function createDP() {
   @param {boolean}   [strict=false]   Optional: if true, it will work strict, if false, it will add a wildcard * to the end of the string
   @return {boolean}                   true if state exists, false if not
  */
-
 function isState(strStatePath, strict) {
-
     let mSelector;
-    if (strict) {
-        mSelector = $('state[id=' + strStatePath + '$]');
-    } else {
-        mSelector = $('state[id=' + strStatePath + ']');
-    }
-
-    if (mSelector.length > 0) {
-        return true;
-    } else {
-        return false;
-    }
+    if (strict) { mSelector = $('state[id=' + strStatePath + '$]'); } else { mSelector = $('state[id=' + strStatePath + ']'); }
+    if (mSelector.length > 0) { return true; } else { return false; }
 }
+
